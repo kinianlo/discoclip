@@ -16,6 +16,21 @@ class CachedBobcatParser(BobcatParser):
         suppress_exceptions: bool = False,
         verbose: str | None = None):
 
+        # Split sentences into batches if they exceed the batch size
+        # This is to avoid computing the same sentence multiple times
+        batch_size = getattr(self, 'batch_size', 16)
+        if len(sentences) > batch_size:
+            results = []
+            for i in range(0, len(sentences), batch_size):
+                batch_results = self.sentences2trees(
+                    sentences[i:i + batch_size],
+                    tokenised=tokenised,
+                    suppress_exceptions=suppress_exceptions,
+                    verbose=verbose
+                )
+                results.extend(batch_results)
+            return results
+
         results = [None] * len(sentences)
         uncached_sentences = []
         
