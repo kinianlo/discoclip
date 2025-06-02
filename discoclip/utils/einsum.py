@@ -1,7 +1,6 @@
 from lambeq.backend.tensor import Diagram, Swap, Cup, Cap, Spider
 from itertools import count
 import opt_einsum as oe
-import torch
 
 def union_find(merges: list[tuple[int, int]]):
     """
