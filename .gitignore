@@ -198,3 +198,6 @@ notebooks/playground.ipynb
 data/aro/images
 data/aro/vgr_vga_images.zip
 checkpoints/
+
+# any folder with the name "images"
+*images/
