@@ -3,11 +3,14 @@ from .tn_models import (
 )
 
 from .text_processor import (
-    Tokenizer,
     TextProcessor,
     BobcatTextProcessor,
-    CupTextProcessor,
+    CupsTextProcessor,
     VectorTextProcessor,
+)
+
+from .tokenizer import (
+    Tokenizer,
 )
     
 
@@ -16,6 +19,6 @@ __all__ = [
     "Tokenizer",
     "TextProcessor",
     "BobcatTextProcessor",
-    "CupTextProcessor",
+    "CupsTextProcessor",
     "VectorTextProcessor",
 ]

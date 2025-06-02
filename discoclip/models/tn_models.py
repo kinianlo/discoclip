@@ -2,7 +2,6 @@ from abc import abstractmethod
 import torch
 import torch.nn as nn
 from typing import List, Dict, Any
-from cotengra import einsum
 from lambeq import Symbol
 
 class EinsumModel(nn.Module):
@@ -97,6 +96,7 @@ class EinsumModel(nn.Module):
         """
         Forward pass of the model.
         """
+        from cotengra import einsum
         if not all(sym in self.symbols for sym in symbols):
             raise ValueError(f"Some symbols {set(symbols) - set(self.symbols)} are not in the model's symbols list.")
         
