@@ -1,5 +1,4 @@
 from lambeq.backend.tensor import Diagram, Swap, Cup, Cap, Spider
-from lambeq import Symbol
 from itertools import count
 import opt_einsum as oe
 import torch
@@ -88,17 +87,10 @@ def tn_to_einsum(diag: Diagram, interleaved: bool = False):
     outputs = [repr.get(edge, edge) for edge in outputs]
     size_dict = {repr.get(edge, edge): size for edge, size in size_dict.items()}
 
-    # Resolve duplicated dangling indices by adding Kronecker delta tensors
     dangling = inputs + outputs
-    seen_indices = set()
-    for i, edge in enumerate(dangling):
-        if edge in seen_indices:
-            new_edge = get_new_index(size_dict[edge])
-            tensors.append(torch.eye(size_dict[edge]))
-            tensor_edges.append([edge, new_edge])
-            dangling[i] = new_edge
-        else:
-            seen_indices.add(edge)
+    if len(set(dangling)) != len(dangling):
+        raise ValueError("Duplicate dangling indices found in the diagram. "
+                         "This is not supported by the current implementation.")
   
     if not interleaved:
         subs = [''.join(oe.get_symbol(i) for i in indices) for indices in tensor_edges]
