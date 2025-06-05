@@ -1,10 +1,10 @@
-import diskcache
 import os
+
+import diskcache
 
 from lambeq import BobcatParser
 from lambeq.core.utils import SentenceBatchType
 
-from tqdm import tqdm
 
 class CachedBobcatParser(BobcatParser):
     def __init__(self, *args,

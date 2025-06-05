@@ -1,7 +1,8 @@
+from typing import Mapping
+
 from lambeq.ansatz.tensor import SplitTensorAnsatz, Dim
 from lambeq.backend.grammar import Ty, Word, Cup
 from lambeq.backend import grammar
-from typing import Mapping
 
 class CustomMPSAnsatz(SplitTensorAnsatz):
     """Split large boxes into matrix product states."""
