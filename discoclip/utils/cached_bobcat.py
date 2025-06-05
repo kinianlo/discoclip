@@ -11,6 +11,14 @@ class CachedBobcatParser(BobcatParser):
                  cache_path: str = "~/.cache/lambeq/bobcat/diskcache",
                  load_parser: bool = False,
                  **kwargs):
+        """
+        A cached version of the BobcatParser that uses diskcache to store
+        previously parsed sentences. This avoids re-parsing the same sentences
+        multiple times, which can be time-consuming.
+        Args:
+            cache_path (str): Path to the diskcache directory.
+            load_parser (bool): Whether to load the parser immediately.
+        """
         self._cache_path = os.path.expanduser(cache_path)
         self._cache = diskcache.Cache(self._cache_path)
 
@@ -20,7 +28,8 @@ class CachedBobcatParser(BobcatParser):
             self._load_parser()
 
     def _load_parser(self):
-        super().__init__(*self.args, **self.kwargs)
+        if not hasattr(self, 'tagger'):
+            super().__init__(*self.args, **self.kwargs)
 
     def sentences2trees(self,
         sentences: SentenceBatchType,
