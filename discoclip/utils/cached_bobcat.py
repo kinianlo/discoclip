@@ -4,32 +4,29 @@ import os
 from lambeq import BobcatParser
 from lambeq.core.utils import SentenceBatchType
 
+from tqdm import tqdm
+
 class CachedBobcatParser(BobcatParser):
-    def __init__(self, *args, cache_path="~/.cache/lambeq/bobcat/diskcache", **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args,
+                 cache_path: str = "~/.cache/lambeq/bobcat/diskcache",
+                 load_parser: bool = False,
+                 **kwargs):
         self._cache_path = os.path.expanduser(cache_path)
         self._cache = diskcache.Cache(self._cache_path)
+
+        self.args = args
+        self.kwargs = kwargs
+        if load_parser:
+            self._load_parser()
+
+    def _load_parser(self):
+        super().__init__(*self.args, **self.kwargs)
 
     def sentences2trees(self,
         sentences: SentenceBatchType,
         tokenised: bool = False,
         suppress_exceptions: bool = False,
-        verbose: str | None = None):
-
-        # Split sentences into batches if they exceed the batch size
-        # This is to avoid computing the same sentence multiple times
-        batch_size = getattr(self, 'batch_size', 16)
-        if len(sentences) > batch_size:
-            results = []
-            for i in range(0, len(sentences), batch_size):
-                batch_results = self.sentences2trees(
-                    sentences[i:i + batch_size],
-                    tokenised=tokenised,
-                    suppress_exceptions=suppress_exceptions,
-                    verbose=verbose
-                )
-                results.extend(batch_results)
-            return results
+        verbose: str | None = 'progress'):
 
         results = [None] * len(sentences)
         uncached_sentences = []
@@ -42,6 +39,7 @@ class CachedBobcatParser(BobcatParser):
                 uncached_sentences.append((i, sent))
         
         if uncached_sentences:
+            self._load_parser()
             uncached_results = super().sentences2trees(
                 [sent for _, sent in uncached_sentences],
                 tokenised=tokenised,
