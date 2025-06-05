@@ -16,9 +16,17 @@ class EinsumModel(nn.Module):
         self.symbols = list(symbols)
         self.sizes = list(sizes)
         self.weights = nn.ParameterList([nn.Parameter(torch.empty(size)) for size in sizes])
+        self.sym2weight = {sym: weight for sym, weight in zip(self.symbols, self.weights)}
 
         self.reset_parameters()
     
+    def compute_sym2weight(self) -> Dict[Symbol, nn.Parameter]:
+        """
+        Compute a dictionary mapping symbols to their corresponding weights.
+        This is useful for accessing the weights by symbol.
+        """
+        return {sym: weight for sym, weight in zip(self.symbols, self.weights)}
+
     def reset_parameters(self, symbols: List[Symbol] = None):
         """
         Initialize all parameters with a uniform distribution.
@@ -73,9 +81,12 @@ class EinsumModel(nn.Module):
         
         for sym, size in zip(symbols, sizes):
             if sym not in self.symbols:
+                new_weight = nn.Parameter(torch.empty(size))
                 self.symbols.append(sym)
-                self.weights.append(nn.Parameter(torch.empty(size)))
+                self.weights.append(new_weight)
                 self.sizes.append(size)
+        
+        self.sym2weight = self.compute_sym2weight()
         
         self.reset_parameters(symbols=symbols)
     
@@ -91,18 +102,28 @@ class EinsumModel(nn.Module):
             del self.symbols[idx]
             del self.weights[idx]
             del self.sizes[idx]
+        
+        self.sym2weight = self.compute_sym2weight()
 
-    def forward(self, einsum_expr: str, symbols: List[Symbol]) -> torch.Tensor:
+    def _forward_single(self, input: tuple[str, List[Symbol]]) -> torch.Tensor:
         """
         Forward pass of the model.
         """
         from cotengra import einsum
-        if not all(sym in self.symbols for sym in symbols):
-            raise ValueError(f"Some symbols {set(symbols) - set(self.symbols)} are not in the model's symbols list.")
-        
-        sym2param = {sym: weight for sym, weight in zip(self.symbols, self.weights) if sym in symbols}
-        
-        return einsum(einsum_expr, *[sym2param[sym] for sym in symbols])
+        einsum_expr, symbols = input
+
+        return einsum(einsum_expr, *[self.sym2weight[sym] for sym in symbols])
+
+    def forward(self, inputs: List[tuple[str, List[Symbol]]]) -> torch.Tensor:
+        """
+        Forward pass of the model.
+        Args:
+            inputs: A list of tuples, where each tuple contains an einsum expression
+                    and a list of symbols.
+        Returns:
+            A tensor representing the result of the einsum operation for each input.
+        """
+        return torch.stack([self._forward_single(input) for input in inputs])
 
     def state_dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         base = super().state_dict(*args, **kwargs)

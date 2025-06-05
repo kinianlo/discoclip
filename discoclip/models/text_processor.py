@@ -15,7 +15,8 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from lambeq import CCGTree, TreeReader, TensorAnsatz, cups_reader
 
-from ..utils.einsum import tn_to_einsum
+from discoclip.utils.einsum import tn_to_einsum
+from discoclip.models.tokenizer import Tokenizer
 
 
 class TextProcessor(ABC):
@@ -25,20 +26,28 @@ class TextProcessor(ABC):
     """
 
     @abstractmethod
-    def parse(self, sentences: list[str], suppress_exceptions: bool = False):
+    def parse(self, sentences: list[str], suppress_exceptions: bool = False, 
+              return_details: bool = False):
         """
         Parse a list of sentences into a tensor network diagram.
+        Args:
+            sentences: A list of sentences to parse.
+            suppress_exceptions: Whether to suppress exceptions during parsing.
+            return_details: Whether to return detailed intermediate results.
         """
         raise NotImplementedError("Subclasses must implement this method.")
     
-    def __call__(self, sentences: list[str], suppress_exceptions: bool = False):
-        return self.parse(sentences, suppress_exceptions=suppress_exceptions)
+    def __call__(self, sentences: list[str], suppress_exceptions: bool = False,
+                return_details: bool = False):
+        return self.parse(sentences, suppress_exceptions=suppress_exceptions,
+                         return_details=return_details)
     
 
 class BobcatTextProcessor(TextProcessor):
-    from lambeq import BobcatParser, TensorAnsatz, TreeReaderMode
+    from lambeq import BobcatParser, TensorAnsatz, TreeReaderMode, Rewriter
 
-    def __init__(self, ccg_parser: BobcatParser, ansatz: TensorAnsatz, 
+    def __init__(self, ccg_parser: BobcatParser, ansatz: TensorAnsatz,
+                 rewriter: Optional[Rewriter] = None,
                  tree_reader_mode: Optional[TreeReaderMode] = None):
         """
         Initialize the BobcatProcessor with a CCG parser and an ansatz.
@@ -51,9 +60,12 @@ class BobcatTextProcessor(TextProcessor):
         self.ccg_parser = ccg_parser
         self.ansatz = ansatz
         self.tokenizer = Tokenizer()
+        self.rewriter = rewriter
         self.tree_reader_mode = tree_reader_mode
     
-    def sentences2trees(self, sentences: list[str], suppress_exceptions: bool = False):
+    def sentences2trees(self, sentences: list[str], 
+                        suppress_exceptions: bool = False,
+                        return_details: bool = False):
         """
         Convert a list of sentences into a list of CCG trees.
         """
@@ -66,34 +78,63 @@ class BobcatTextProcessor(TextProcessor):
             self.lemmatize_tree(tree, lemma) if tree else None 
             for tree, lemma in zip(trees, lemmas)
         ]
-        results =  {'tokens': tokens,
-                'lemmas': lemmas,
-                'trees': trees,
-                'lemma_trees': lemma_trees
-                }
-        return results
 
-    def parse(self, sentences: list[str], suppress_exceptions: bool = False):
+        if return_details:
+            return {'tokens': tokens,
+                    'lemmas': lemmas,
+                    'trees': trees,
+                    'lemma_trees': lemma_trees}
+        else:
+            del tokens, lemmas, trees  # Free memory
+            return {'lemma_trees': lemma_trees}
+
+    def parse(self, sentences: list[str], suppress_exceptions: bool = False,
+              return_details: bool = False):
         """
         Parse a list of sentences into a tensor network diagram.
         """
-        results = self.sentences2trees(sentences, suppress_exceptions=suppress_exceptions)
+        results = self.sentences2trees(sentences, suppress_exceptions=suppress_exceptions,
+                                       return_details=return_details)
+
         lemma_trees = results['lemma_trees']
         if self.tree_reader_mode is not None:
             diagrams = [TreeReader.tree2diagram(tree, mode=self.tree_reader_mode) 
                         if tree else None for tree in lemma_trees]
         else:
             diagrams = [tree.to_diagram() if tree else None for tree in lemma_trees]
-        circuits = [self.ansatz(diagram) if diagram else None for diagram in diagrams]
+
+        if self.rewriter is not None:
+            rewritten_diagrams = [self.rewriter(diagram).remove_snakes() if diagram else None for diagram in diagrams]
+        else:
+            rewritten_diagrams = diagrams  # Use diagrams directly if no rewriter
+
+        circuits = [self.ansatz(diagram) if diagram else None for diagram in rewritten_diagrams]
 
         einsum_inputs = [tn_to_einsum(circuit) if circuit else None for circuit in circuits]
 
-
-        results['diagrams'] = diagrams
-        results['circuits'] = circuits
-        results['einsum_inputs'] = einsum_inputs
-
-        return results
+        # Create a new results dictionary with only what we need
+        filtered_results = {}
+        filtered_results['einsum_inputs'] = einsum_inputs
+        
+        if return_details:
+            filtered_results['lemma_trees'] = lemma_trees
+            filtered_results['diagrams'] = diagrams
+            filtered_results['rewritten_diagrams'] = rewritten_diagrams
+            filtered_results['circuits'] = circuits
+            # Copy any other fields from the original results dictionary
+            for key in results:
+                if key != 'lemma_trees':  # Already added this above
+                    filtered_results[key] = results[key]
+        
+        # Explicitly delete all large objects if not returning them
+        del results
+        del einsum_inputs
+        del diagrams
+        del rewritten_diagrams
+        del circuits
+        del lemma_trees  # Free memory
+        
+        return filtered_results
 
     def lemmatize_tree(self, tree: CCGTree, lemmas: list):
         """
@@ -127,9 +168,14 @@ class CupsTextProcessor(TextProcessor):
         self.ansatz = ansatz
         self.tokenizer = Tokenizer()
     
-    def parse(self, sentences: list[str], suppress_exceptions: bool = False):
+    def parse(self, sentences: list[str], suppress_exceptions: bool = False,
+              return_details: bool = False):
         """
         Parse a list of sentences into a tensor network diagram.
+        Args:
+            sentences: A list of sentences to parse.
+            suppress_exceptions: Whether to suppress exceptions during parsing.
+            return_details: Whether to return detailed intermediate results.
         """
         tokens = [self.tokenizer.tokenize(sent) for sent in sentences]
         lemmas = [self.tokenizer.lemmatize(tokens) for tokens in tokens]
@@ -138,13 +184,19 @@ class CupsTextProcessor(TextProcessor):
         circuits = [self.ansatz(diagram) for diagram in diagrams]
         einsum_inputs = [tn_to_einsum(circuit) for circuit in circuits]
 
-        results = {
-            'tokens': tokens,
-            'lemmas': lemmas,
-            'diagrams': diagrams,
-            'circuits': circuits,
-            'einsum_inputs': einsum_inputs
-        }
+        results = {'einsum_inputs': einsum_inputs}
+        
+        if return_details:
+            results.update({
+                'tokens': tokens,
+                'lemmas': lemmas,
+                'diagrams': diagrams,
+                'circuits': circuits
+            })
+        else:
+            # Free memory for large objects
+            del tokens, lemmas, diagrams, circuits
+            
         return results
 
 class VectorTextProcessor(TextProcessor):
@@ -157,18 +209,27 @@ class VectorTextProcessor(TextProcessor):
         self.ansatz = ansatz
         self.tokenizer = Tokenizer()
     
-    def parse(self, sentences: list[str], suppress_exceptions: bool = False):
+    def parse(self, sentences: list[str], suppress_exceptions: bool = False,
+              return_details: bool = False):
         """
         Parse a list of sentences into a tensor network diagram.
         Args:
             sentences: A list of sentences to parse.
             suppress_exceptions: Not used in this processor, but kept for compatibility.
+            return_details: Whether to return detailed intermediate results.
         """
         tokens = [self.tokenizer.tokenize(sent) for sent in sentences]
         lemmas = [self.tokenizer.lemmatize(tokens) for tokens in tokens]
 
+        # For VectorTextProcessor, minimal results are the same as detailed results
+        # since it doesn't have diagrams or circuits
         results = {
-            'tokens': tokens,
             'lemmas': lemmas,
         }
+        
+        if return_details:
+            results['tokens'] = tokens
+        else:
+            del tokens  # Free memory when not needed
+            
         return results
