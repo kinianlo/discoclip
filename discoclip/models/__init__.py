@@ -12,6 +12,10 @@ from .text_processor import (
 from .tokenizer import (
     Tokenizer,
 )
+
+from .criteria import (
+    InfoNCE,
+)
     
 
 __all__ = [
@@ -21,4 +25,5 @@ __all__ = [
     "BobcatTextProcessor",
     "CupsTextProcessor",
     "VectorTextProcessor",
+    "InfoNCE",
 ]
