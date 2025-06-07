@@ -60,16 +60,18 @@ class ARODataset(Dataset):
     def __init__(self, 
                  data_path: str, 
                  text_transform,
+                 crop: bool = True,
                  progress = True):
         self.dataset = pd.read_json(data_path)
+        self.crop = crop
         self.progress = progress
 
         required_columns = ['true_caption', 'false_caption', 'image_path']
         if not all(col in self.dataset.columns for col in required_columns):
             raise ValueError(f"ARODataset must contain the following columns: {required_columns}")
 
-        self.precompute_text(text_transform)
-        del text_transform
+        if text_transform is not None:
+            self.precompute_text(text_transform)
 
     def precompute_text(self, text_transform):
         # build a map from text to einsum inputs
@@ -89,14 +91,20 @@ class ARODataset(Dataset):
                     _, symbol_size_list = einsum_input
                     for symbol, size in symbol_size_list:
                         symbol_size_set.add((symbol, size))
-        del text_transform 
         self.symbols, self.sizes = zip(*symbol_size_set) if symbol_size_set else ([], [])
                     
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        image = self.dataset.iloc[idx]['image_path']
+        if self.crop:
+            x = self.dataset.iloc[idx]['bbox_x']
+            y = self.dataset.iloc[idx]['bbox_y']
+            w = self.dataset.iloc[idx]['bbox_w']
+            h = self.dataset.iloc[idx]['bbox_h']
+            image = f'{self.dataset.iloc[idx]["image_path"].split(".")[0]}_{x}_{y}_{w}_{h}.jpg'
+        else:
+            image = self.dataset.iloc[idx]['image_path']
 
         true_caption = self.dataset.iloc[idx]['true_caption']
         false_caption = self.dataset.iloc[idx]['false_caption']
@@ -118,9 +126,87 @@ class ARODataset(Dataset):
             "false_caption": false_caption,
             "index": idx
         }
+    
+    def state_dict(self):
+        return {
+            'text_map': self.text_map,
+            'symbols': self.symbols,
+            'sizes': self.sizes
+        }
+    
+    def load_state_dict(self, state_dict):
+        self.text_map = state_dict['text_map']
+        self.symbols = state_dict['symbols']
+        self.sizes = state_dict['sizes']
+
+from discoclip.models import VectorTextProcessor
+
+class AROVectorDataset(Dataset):
+    def __init__(self, 
+                 data_path: str,
+                 text_transform: VectorTextProcessor,
+                 crop: bool = True,
+                 progress = True):
+        self.dataset = pd.read_json(data_path)
+        self.crop = crop
+        self.progress = progress
+       
+        if text_transform is not None:
+            self.precompute_text(text_transform)
+        
+    def precompute_text(self, text_transform: VectorTextProcessor):
+        self.text_map = {}
+        captions = list(set(self.dataset['true_caption'].tolist() + self.dataset['false_caption'].tolist()))
+        self.vocab = set()
+        
+        for caption in tqdm(captions, disable=not self.progress):
+            self.text_map[caption] = text_transform([caption], suppress_exceptions=True)['lemmas'][0]
+            self.vocab.update(self.text_map[caption])
+        self.vocab = list(self.vocab)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        if self.crop:
+            x = self.dataset.iloc[idx]['bbox_x']
+            y = self.dataset.iloc[idx]['bbox_y']
+            w = self.dataset.iloc[idx]['bbox_w']
+            h = self.dataset.iloc[idx]['bbox_h']
+            image = f'{self.dataset.iloc[idx]["image_path"].split(".")[0]}_{x}_{y}_{w}_{h}.jpg'
+        else:
+            image = self.dataset.iloc[idx]['image_path']
+
+        true_caption = self.dataset.iloc[idx]['true_caption']
+        false_caption = self.dataset.iloc[idx]['false_caption']
+
+        true_caption = self.text_map.get(true_caption, None)
+        false_caption = self.text_map.get(false_caption, None)
+        
+        return {
+            "image": image,
+            "true_caption": true_caption,
+            "false_caption": false_caption,
+            "index": idx
+        }
+    
+    def state_dict(self):
+        return {
+            'text_map': self.text_map,
+            'vocab': self.vocab
+        }
+    
+    def load_state_dict(self, state_dict):
+        self.text_map = state_dict['text_map']
+        self.vocab = state_dict['vocab']
+        
 
 def aro_tn_collate_fn(batch):
     valid = [item['true_caption'] is not None and item['false_caption'] is not None for item in batch]
+    # print the number of invalid samples if any
+    if not all(valid):
+        print(f"Found {sum(not v for v in valid)} invalid samples")
+
     images = [item['image'] for item, v in zip(batch, valid) if v]
     true_captions = [item['true_caption'] for item, v in zip(batch, valid) if v]
     false_captions = [item['false_caption'] for item, v in zip(batch, valid) if v]
@@ -132,3 +218,5 @@ def aro_tn_collate_fn(batch):
         "false_captions": false_captions,
         "indices": indices
     }
+    
+aro_vector_collate_fn = aro_tn_collate_fn

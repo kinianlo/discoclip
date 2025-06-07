@@ -200,13 +200,7 @@ class CupsTextProcessor(TextProcessor):
         return results
 
 class VectorTextProcessor(TextProcessor):
-    def __init__(self, ansatz: TensorAnsatz):
-        """
-        Initialize the VectorProcessor with a tensor ansatz.
-        Args:
-            ansatz: An instance of a tensor ansatz (e.g., MPSAnsatz).
-        """
-        self.ansatz = ansatz
+    def __init__(self):
         self.tokenizer = Tokenizer()
     
     def parse(self, sentences: list[str], suppress_exceptions: bool = False,

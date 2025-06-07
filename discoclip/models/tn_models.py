@@ -12,13 +12,16 @@ class EinsumModel(nn.Module):
         if len(symbols) != len(sizes):
             raise ValueError("Symbols and sizes must have the same length.")
 
+        if len(set(symbols)) != len(symbols):
+            raise ValueError("Symbols must be unique.")
+
         super().__init__()
         self.symbols = list(symbols)
         self.sizes = list(sizes)
         self.weights = nn.ParameterList([nn.Parameter(torch.empty(size)) for size in sizes])
-        self.sym2weight = {sym: weight for sym, weight in zip(self.symbols, self.weights)}
 
         self.reset_parameters()
+        self.sym2weight = self.compute_sym2weight()
     
     def compute_sym2weight(self) -> Dict[Symbol, nn.Parameter]:
         """
@@ -86,9 +89,8 @@ class EinsumModel(nn.Module):
                 self.weights.append(new_weight)
                 self.sizes.append(size)
         
-        self.sym2weight = self.compute_sym2weight()
-        
         self.reset_parameters(symbols=symbols)
+        self.sym2weight = self.compute_sym2weight()
     
     def remove_symbols(self, symbols: List[Symbol]):
         """
@@ -142,6 +144,8 @@ class EinsumModel(nn.Module):
         self.weights = nn.ParameterList(
             [nn.Parameter(torch.empty(size)) for size in self.sizes]
         )
+        
+        self.sym2weight = self.compute_sym2weight()
         return super().load_state_dict(state_dict, strict=strict)
 
 class VectorModel(nn.Module):
@@ -161,6 +165,7 @@ class VectorModel(nn.Module):
         self.dim = dim
         self.weights = nn.ParameterList([nn.Parameter(torch.empty(dim)) for _ in vocab])
         self.reset_parameters()
+        self.word2weight = self.compute_word2weight()
     
     def reset_parameters(self):
         """
@@ -169,9 +174,15 @@ class VectorModel(nn.Module):
         bound = 3 ** 0.5
         for weight in self.weights:
             nn.init.uniform_(weight, -bound, bound)
+            
+    def compute_word2weight(self) -> Dict[str, nn.Parameter]:
+        """
+        Compute a dictionary mapping words to their corresponding weights.
+        """
+        return {word: weight for word, weight in zip(self.vocab, self.weights)}
 
     @abstractmethod 
-    def forward(self, words: list[str]) -> torch.Tensor:
+    def _forward_single(self, words: list[str]) -> torch.Tensor:
         """
         Forward pass of the model.
         Args:
@@ -181,6 +192,17 @@ class VectorModel(nn.Module):
             for each word in the corresponding sentence.
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
+    
+    def forward(self, inputs: list[list[str]]) -> torch.Tensor:
+        """
+        Forward pass of the model.
+        Args:
+            inputs: A list of lists of words (strings) for which to compute the sum of vectors.
+        Returns:
+            A tensor of shape (batch_size, dim) where each row is the sum of the vectors
+            for each sentence in the input list.
+        """
+        return torch.stack([self._forward_single(input) for input in inputs])
     
     def state_dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         base = super().state_dict(*args, **kwargs)
@@ -198,13 +220,14 @@ class VectorModel(nn.Module):
         self.weights = nn.ParameterList(
             [nn.Parameter(torch.empty(self.dim)) for _ in self.vocab]
         )
+        self.word2weight = self.compute_word2weight()
         return super().load_state_dict(state_dict, strict=strict)
 
 class SumVectorModel(VectorModel):
     """
     A model that sums the vectors for each word in the sentence.
     """
-    def forward(self, words: list[str]) -> torch.Tensor:
+    def _forward_single(self, words: list[str]) -> torch.Tensor:
         """
         Forward pass of the model.
         Args:
@@ -215,15 +238,14 @@ class SumVectorModel(VectorModel):
         """
         if not all(word in self.vocab for word in words):
             raise ValueError(f"Some words {set(words) - set(self.vocab)} are not in the model's vocabulary.")
-        word2idx = {word: idx for idx, word in enumerate(self.vocab)}
 
-        return torch.stack([self.weights[word2idx[word]] for word in words]).sum(dim=0)
+        return torch.stack([self.word2weight[word] for word in words]).sum(dim=0)
 
 class ProductVectorModel(VectorModel):
     """
     A model that computes the product of the vectors for each word in the sentence.
     """
-    def forward(self, words: list[str]) -> torch.Tensor:
+    def _forward_single(self, words: list[str]) -> torch.Tensor:
         """
         Forward pass of the model.
         Args:
@@ -234,6 +256,4 @@ class ProductVectorModel(VectorModel):
         """
         if not all(word in self.vocab for word in words):
             raise ValueError(f"Some words {set(words) - set(self.vocab)} are not in the model's vocabulary.")
-        word2idx = {word: idx for idx, word in enumerate(self.vocab)}
-
-        return torch.stack([self.weights[word2idx[word]] for word in words]).prod(dim=0)
+        return torch.stack([self.word2weight[word] for word in words]).prod(dim=0)

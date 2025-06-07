@@ -1,5 +1,7 @@
 from .tn_models import (
     EinsumModel,
+    SumVectorModel,
+    ProductVectorModel,
 )
 
 from .text_processor import (
@@ -20,6 +22,8 @@ from .criteria import (
 
 __all__ = [
     "EinsumModel",
+    "SumVectorModel",
+    "ProductVectorModel",
     "Tokenizer",
     "TextProcessor",
     "BobcatTextProcessor",
