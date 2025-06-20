@@ -16,7 +16,7 @@ from torch.nn.functional import cosine_similarity
 from torch.utils.data import DataLoader
 from tqdm import trange
 
-from discoclip.data import SVODataset, SVOVectorDataset, svo_tn_collate_fn, svo_vector_collate_fn
+from discoclip.data import ARODataset, AROVectorDataset, aro_tn_collate_fn, aro_vector_collate_fn
 from discoclip.models import BobcatTextProcessor, EinsumModel, InfoNCE, ProductVectorModel, SumVectorModel
 from discoclip.utils import CachedBobcatParser, CustomMPSAnsatz, LookupEmbedding
 
@@ -25,7 +25,7 @@ torch.serialization.add_safe_globals([Symbol])
 
 def parse_args():
     parser = ArgumentParser(
-        description="Discoclip SVO Dataset Training Script",
+        description="Discoclip ARO Dataset Training Script",
         formatter_class=ArgumentDefaultsHelpFormatter
     )
     
@@ -186,9 +186,9 @@ def parse_args():
     return args
 
 
-def get_svo_dataset(
+def get_aro_dataset(
     data_path: str, reader: str, dim: int, bond_dim: int, progress: bool = True
-) -> SVODataset:
+) -> ARODataset:
     cache_dir = os.path.join(os.path.dirname(data_path), '.cache')
     os.makedirs(cache_dir, exist_ok=True)
     
@@ -210,17 +210,17 @@ def get_svo_dataset(
         print(f"Loading cached dataset from {cache_key}")
         if reader in ["spider", "sum"]:
             from discoclip.models import VectorTextProcessor
-            dataset = SVOVectorDataset(data_path=data_path, text_transform=None)
+            dataset = AROVectorDataset(data_path=data_path, text_transform=None)
             dataset.load_state_dict(state_dict)
         else:
-            dataset = SVODataset(data_path=data_path, text_transform=None)
+            dataset = ARODataset(data_path=data_path, text_transform=None)
             dataset.load_state_dict(state_dict)
         return dataset
 
     # Not found in cache, create the dataset
     if reader in ["spider", "sum"]:
         from discoclip.models import VectorTextProcessor
-        dataset = SVOVectorDataset(data_path=data_path, 
+        dataset = AROVectorDataset(data_path=data_path, 
                                    text_transform=VectorTextProcessor(),
                                    progress=progress)
     else:
@@ -284,7 +284,7 @@ def get_svo_dataset(
         else:
             raise ValueError(f"Unknown reader: {reader}")
 
-        dataset = SVODataset(
+        dataset = ARODataset(
             data_path=data_path, text_transform=text_transform, progress=progress
         )
 
@@ -333,11 +333,10 @@ def train_epoch(
         "hard_neg_loss": 0.0,
         "hard_neg_acc": 0.0,
         "hard_neg_draw": 0.0,
-        "sentence_embedding_mean_norm": 0.0,
-        "pos_image_embedding_mean_norm": 0.0,
-        "neg_image_embedding_mean_norm": 0.0,
-        "pos_cosine_mean": 0.0,
-        "neg_cosine_mean": 0.0,
+        "true_caption_embedding_mean_norm": 0.0,
+        "false_caption_embedding_mean_norm": 0.0,
+        "true_cosine_mean": 0.0,
+        "false_cosine_mean": 0.0,
     }
 
     total_samples = 0
@@ -345,35 +344,38 @@ def train_epoch(
     for batch in dataloader:
         optimizer.zero_grad()
 
-        pos_images = batch["pos_images"]
-        neg_images = batch["neg_images"]
-        sentences = batch["sentences"]
-        batch_size = len(pos_images)
+        images = batch["images"]
+        true_captions = batch["true_captions"]
+        false_captions = batch["false_captions"]
+        batch_size = len(images)
 
         with torch.no_grad():
-            pos_image_embeddings = image_model(pos_images).to(device)
-            neg_image_embeddings = image_model(neg_images).to(device)
+            image_embeddings = image_model(images).to(device)
 
-        sentence_embeddings = model(sentences)
+        true_caption_embeddings = model(true_captions)
+        false_caption_embeddings = model(false_captions)
 
-        metrics["sentence_embedding_mean_norm"] += (
-            sentence_embeddings.norm(dim=-1).mean().item()
+        metrics["true_caption_embedding_mean_norm"] += (
+            true_caption_embeddings.norm(dim=-1).mean().item()
+        )
+        metrics["false_caption_embedding_mean_norm"] += (
+            false_caption_embeddings.norm(dim=-1).mean().item()
         )
 
         infonce_loss, infonce_acc = contrastive_criterion(
-            pos_image_embeddings, sentence_embeddings
+            image_embeddings, true_caption_embeddings
         )
 
-        pos_sim = cosine_similarity(sentence_embeddings, pos_image_embeddings, dim=-1)
-        neg_sim = cosine_similarity(sentence_embeddings, neg_image_embeddings, dim=-1)
+        pos_sim = cosine_similarity(true_caption_embeddings, image_embeddings, dim=-1)
+        neg_sim = cosine_similarity(false_caption_embeddings, image_embeddings, dim=-1)
         
-        metrics["pos_cosine_mean"] += pos_sim.mean().item()
-        metrics["neg_cosine_mean"] += neg_sim.mean().item()
+        metrics["true_cosine_mean"] += pos_sim.mean().item()
+        metrics["false_cosine_mean"] += neg_sim.mean().item()
 
         hard_neg_acc = (pos_sim > neg_sim).float().mean().item()
         hard_neg_draw = (pos_sim == neg_sim).float().mean().item()
-        hard_neg_loss = hard_neg_criterion(sentence_embeddings, 
-                                           pos_image_embeddings, neg_image_embeddings)
+        hard_neg_loss = hard_neg_criterion(image_embeddings, 
+                                           true_caption_embeddings, false_caption_embeddings)
         
         loss = infonce_loss + hard_neg_loss_weight * hard_neg_loss
 
@@ -416,43 +418,45 @@ def evaluate_model(
         "hard_neg_loss": 0.0,
         "hard_neg_acc": 0.0,
         "hard_neg_draw": 0.0,
-        "sentence_embedding_mean_norm": 0.0,
-        "pos_image_embedding_mean_norm": 0.0,
-        "neg_image_embedding_mean_norm": 0.0,
-        "pos_cosine_mean": 0.0,
-        "neg_cosine_mean": 0.0,
+        "true_caption_embedding_mean_norm": 0.0,
+        "false_caption_embedding_mean_norm": 0.0,
+        "true_cosine_mean": 0.0,
+        "false_cosine_mean": 0.0,
     }
 
     total_samples = 0
     with torch.no_grad():
         for batch in dataloader:
-            pos_images = batch["pos_images"]
-            neg_images = batch["neg_images"]
-            sentences = batch["sentences"]
-            batch_size = len(pos_images)
+            images = batch["images"]
+            true_captions = batch["true_captions"]
+            false_captions = batch["false_captions"]
+            batch_size = len(images)
 
-            pos_image_embeddings = image_model(pos_images).to(device)
-            neg_image_embeddings = image_model(neg_images).to(device)
-            sentence_embeddings = model(sentences)
+            image_embeddings = image_model(images).to(device)
+            true_caption_embeddings = model(true_captions)
+            false_caption_embeddings = model(false_captions)
 
-            metrics["sentence_embedding_mean_norm"] += (
-                sentence_embeddings.norm(dim=-1).mean().item()
+            metrics["true_caption_embedding_mean_norm"] += (
+                true_caption_embeddings.norm(dim=-1).mean().item()
+            )
+            metrics["false_caption_embedding_mean_norm"] += (
+                false_caption_embeddings.norm(dim=-1).mean().item()
             )
 
             infonce_loss, infonce_acc = contrastive_criterion(
-                pos_image_embeddings, sentence_embeddings
+                image_embeddings, true_caption_embeddings
             )
 
-            pos_sim = cosine_similarity(sentence_embeddings, pos_image_embeddings, dim=-1)
-            neg_sim = cosine_similarity(sentence_embeddings, neg_image_embeddings, dim=-1)
+            pos_sim = cosine_similarity(true_caption_embeddings, image_embeddings, dim=-1)
+            neg_sim = cosine_similarity(false_caption_embeddings, image_embeddings, dim=-1)
 
-            metrics["pos_cosine_mean"] += pos_sim.mean().item()
-            metrics["neg_cosine_mean"] += neg_sim.mean().item()
+            metrics["true_cosine_mean"] += pos_sim.mean().item()
+            metrics["false_cosine_mean"] += neg_sim.mean().item()
 
             hard_neg_acc = (pos_sim > neg_sim).float().mean().item()
             hard_neg_draw = (pos_sim == neg_sim).float().mean().item()
-            hard_neg_loss = hard_neg_criterion(sentence_embeddings, 
-                                               pos_image_embeddings, neg_image_embeddings)
+            hard_neg_loss = hard_neg_criterion(image_embeddings, 
+                                             true_caption_embeddings, false_caption_embeddings)
 
             loss = infonce_loss + hard_neg_loss_weight * hard_neg_loss
 
@@ -513,7 +517,7 @@ def train_model(args, parent_run=None):
         set_seed(args.seed)
 
         # Get datasets
-        train_ds = get_svo_dataset(
+        train_ds = get_aro_dataset(
             data_path=args.train_data_path,
             reader=args.reader,
             dim=args.embedding_dim,
@@ -521,7 +525,7 @@ def train_model(args, parent_run=None):
             progress=True,
         )
 
-        val_ds = get_svo_dataset(
+        val_ds = get_aro_dataset(
             data_path=args.val_data_path,
             reader=args.reader,
             dim=args.embedding_dim,
@@ -529,7 +533,7 @@ def train_model(args, parent_run=None):
             progress=True,
         )
 
-        test_ds = get_svo_dataset(
+        test_ds = get_aro_dataset(
             data_path=args.test_data_path,
             reader=args.reader,
             dim=args.embedding_dim,
@@ -543,9 +547,9 @@ def train_model(args, parent_run=None):
 
         # Init dataloaders
         if args.reader in ["spider", "sum"]:
-            collate_fn = svo_vector_collate_fn
+            collate_fn = aro_vector_collate_fn
         else:
-            collate_fn = svo_tn_collate_fn
+            collate_fn = aro_tn_collate_fn
 
         train_loader = DataLoader(
             train_ds,
@@ -672,6 +676,10 @@ def train_model(args, parent_run=None):
             best_model.load_state_dict(best_checkpoint["model_state_dict"])
         best_model = best_model.to(args.device)
 
+        
+        best_model.load_state_dict(best_checkpoint["model_state_dict"])
+        best_model = best_model.to(args.device)
+
         test_metrics = evaluate_model(
             best_model,
             image_model,
@@ -712,10 +720,107 @@ def set_seed(seed):
         torch.mps.manual_seed(seed)
 
 
+def test_model(args):
+    """
+    Test a trained model on the test set.
+    """
+    with mlflow.start_run() as run:
+        mlflow.log_params(vars(args))
+
+        logger = setup_logger(
+            os.path.join(args.log_path, f"test_{run.info.run_id}.log")
+        )
+        logger.info(
+            f"Running test experiment: {args.mlflow_experiment}, run ID: {run.info.run_id}"
+        )
+        
+        logger.info(f"Args: {vars(args)}")
+        
+        set_seed(args.seed)
+
+        # Get test dataset
+        test_ds = get_aro_dataset(
+            data_path=args.test_data_path,
+            reader=args.reader,
+            dim=args.embedding_dim,
+            bond_dim=args.bond_dim,
+            progress=True,
+        )
+        
+        mlflow.log_params({"ds_size_test": len(test_ds)})
+
+        # Init dataloader
+        if args.reader in ["spider", "sum"]:
+            collate_fn = aro_vector_collate_fn
+        else:
+            collate_fn = aro_tn_collate_fn
+
+        test_loader = DataLoader(
+            test_ds,
+            batch_size=args.batch_size,
+            shuffle=False,
+            collate_fn=collate_fn,
+        )
+
+        # Initialize model
+        if args.reader in ["spider", "sum"]:
+            model = get_vector_model([test_ds], args.reader, args.embedding_dim).to(args.device)
+        else:
+            model = get_einsum_model([test_ds]).to(args.device)
+       
+        number_params = sum(p.numel() for p in model.parameters())
+        mlflow.log_params({"model_num_params": number_params})
+
+        # Load trained model
+        checkpoint = torch.load(args.checkpoint_path, map_location=args.device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model = model.to(args.device)
+
+        # Load image model
+        image_model = LookupEmbedding.load_from_checkpoint(args.image_lookup_path)
+        image_model = image_model.to(args.device)
+
+        # Define loss functions
+        contrastive_loss = InfoNCE(temperature=args.temperature)
+        if args.hard_neg_distance_function == "cosine":
+            distance_function = lambda x, y: 1 - nn.CosineSimilarity(dim=-1)(x, y)
+        elif args.hard_neg_distance_function == "euclidean":
+            distance_function = nn.PairwiseDistance(p=2)
+        else:
+            raise ValueError(f"Unknown distance function: {args.hard_neg_distance_function}")
+        hard_neg_loss = nn.TripletMarginWithDistanceLoss(
+            distance_function=distance_function,
+            margin=args.hard_neg_margin,
+            swap=args.hard_neg_swap,
+        )
+
+        # Evaluate on test set
+        test_metrics = evaluate_model(
+            model,
+            image_model,
+            test_loader,
+            contrastive_loss,
+            hard_neg_loss,
+            hard_neg_loss_weight=args.hard_neg_loss_weight,
+            device=args.device,
+        )
+        
+        mlflow.log_metrics(
+            {f"test/{key}": value for key, value in test_metrics.items()}
+        )
+        
+        logger.info(
+            f"Test Loss: {test_metrics['loss']:.4f}, "
+            f"Test Acc: {test_metrics['hard_neg_acc']:.4f}"
+        )
+        logger.info("Testing complete.")
+        mlflow.log_artifact(os.path.join(args.log_path, f"test_{run.info.run_id}.log"))
+
+
 if __name__ == "__main__":
     args = parse_args()
 
     mlflow.set_tracking_uri(args.mlflow_uri)
     mlflow.set_experiment(args.mlflow_experiment)
 
-    train_model(args)
+    test_model(args)
