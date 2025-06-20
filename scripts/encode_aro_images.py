@@ -62,11 +62,11 @@ def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="Encode ARO images using CLIP")
     parser.add_argument("--clip-model", type=str, default="ViT-B/32", help="CLIP model to use")
-    parser.add_argument("--device", type=str, default="mps", help="Device to use for encoding")
-    parser.add_argument("--image-folder", type=str, default="../data/raw/aro/images", help="Path to ARO image folder")
-    parser.add_argument("--vgr-path", type=str, default="../data/raw/aro/visual_genome_relation.json", help="Path to Visual Genome Relation JSON file")
-    parser.add_argument("--vga-path", type=str, default="../data/raw/aro/visual_genome_attribution.json", help="Path to Visual Genome Attribution JSON file")
-    parser.add_argument("--output-path", type=str, default="../data/processed/aro/clip_ViT-B-32.pt", help="Path to save the output embeddings")
+    parser.add_argument("--device", type=str, default="cpu", help="Device to use for encoding")
+    parser.add_argument("--image-folder", type=str, default="data/raw/aro/images", help="Path to ARO image folder")
+    parser.add_argument("--vgr-path", type=str, default="data/raw/aro/visual_genome_relation.json", help="Path to Visual Genome Relation JSON file")
+    parser.add_argument("--vga-path", type=str, default="data/raw/aro/visual_genome_attribution.json", help="Path to Visual Genome Attribution JSON file")
+    parser.add_argument("--output-path", type=str, default="data/processed/aro/clip_ViT-B-32.pt", help="Path to save the output embeddings")
     return parser.parse_args()
 
 
