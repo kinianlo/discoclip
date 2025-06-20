@@ -199,7 +199,9 @@ data/aro/images
 data/aro/vgr_vga_images.zip
 checkpoints/
 mlruns/
+paper/
 
 # any folder with the name "images"
 *images/
 *.prof
+
