@@ -66,9 +66,15 @@ def parse_args():
     parser.add_argument("--image-folder", type=str, default="data/raw/aro/images", help="Path to ARO image folder")
     parser.add_argument("--vgr-path", type=str, default="data/raw/aro/visual_genome_relation.json", help="Path to Visual Genome Relation JSON file")
     parser.add_argument("--vga-path", type=str, default="data/raw/aro/visual_genome_attribution.json", help="Path to Visual Genome Attribution JSON file")
-    parser.add_argument("--output-path", type=str, default="data/processed/aro/clip_ViT-B-32.pt", help="Path to save the output embeddings")
-    return parser.parse_args()
+    parser.add_argument("--output-path", type=str, default=None, help="Path to save the output embeddings")
 
+    args = parser.parse_args()
+    
+    if args.output_path is None:
+        safe_model = args.clip_model.replace('/', '_')
+        args.output_path = f"data/processed/aro/lookup_embedding_{safe_model}.pt"
+    
+    return args
 
 if __name__ == '__main__':
     args = parse_args()
