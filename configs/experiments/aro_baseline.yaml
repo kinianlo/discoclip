@@ -1,0 +1,19 @@
+# This configuration extends the default configuration
+# Only specify parameters that differ from aro_default.yaml
+
+# Model configuration
+embedding_dim: 768  # Larger embedding dimension
+bond_dim: 16       # Larger bond dimension
+
+# Training configuration
+batch_size: 32     # Smaller batch size for better generalization
+learning_rate: 0.001  # Lower learning rate
+weight_decay: 0.001  # Lower weight decay
+
+# Loss configuration
+hard_neg_loss_weight: 1.0  # Enable hard negative loss
+hard_neg_margin: 0.2      # Larger margin for better separation
+hard_neg_distance_function: "euclidean"  # Use Euclidean distance
+
+# System configuration
+device: "cuda"  # Use GPU if available 

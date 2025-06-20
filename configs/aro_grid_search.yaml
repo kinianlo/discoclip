@@ -1,0 +1,40 @@
+# Data configuration
+# train_data_path: "data/processed/aro/visual_genome_attribution/train.json"
+# val_data_path: "data/processed/aro/visual_genome_attribution/val.json"
+# test_data_path: "data/processed/aro/visual_genome_attribution/test.json"
+# train_data_path: "data/processed/aro/visual_genome_relation/train.json"
+# val_data_path: "data/processed/aro/visual_genome_relation/val.json"
+# test_data_path: "data/processed/aro/visual_genome_relation/test.json"
+train_data_path: "data/processed/aro/combined/train.json"
+val_data_path: "data/processed/aro/combined/val.json"
+test_data_path: "data/processed/aro/combined/test.json"
+image_lookup_path: "data/processed/aro/clip_ViT-B-32.pt"
+
+# Model configuration
+reader: ["bobcat", "tree", "cups"]
+embedding_dim: [512]
+bond_dim: [2, 5, 10, 15, 20]
+
+# Training configuration
+batch_size: [64]
+learning_rate: [0.001]
+weight_decay: [0.01]
+epochs: 10
+patience: 5
+
+# Loss configuration
+temperature: 0.07
+hard_neg_loss_weight: 0
+hard_neg_margin: 0.1
+hard_neg_distance_function: "cosine"
+hard_neg_swap: false
+
+# Logging configuration
+log_path: "logs"
+checkpoint_path: "checkpoints"
+mlflow_uri: "sqlite:////Users/kinianlo/mlflow/mlruns.db"
+mlflow_experiment: "discoclip_aro_grid_search_combined"
+
+# System configuration
+device: "mps"
+seed: 42 

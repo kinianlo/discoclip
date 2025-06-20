@@ -1,0 +1,34 @@
+# Data configuration
+train_data_path: "data/processed/svo_probes/train.csv"
+val_data_path: "data/processed/svo_probes/val.csv"
+test_data_path: "data/processed/svo_probes/test.csv"
+image_lookup_path: "data/processed/svo_probes/clip_ViT-B-32.pt"
+
+# Model configuration
+reader: "bobcat"  # choices: ["bobcat", "tree", "tree_rule_only", "tree_rule_type", "tree_height", "cups"]
+embedding_dim: 512
+bond_dim: 10
+
+# Training configuration
+batch_size: 64
+learning_rate: 0.003
+weight_decay: 0.01
+epochs: 10
+patience: 5
+
+# Loss configuration
+temperature: 0.07
+hard_neg_loss_weight: 0
+hard_neg_margin: 0.1
+hard_neg_distance_function: "cosine"  # choices: ["cosine", "euclidean"]
+hard_neg_swap: false
+
+# Logging configuration
+log_path: "logs"
+checkpoint_path: "checkpoints"
+mlflow_uri: "sqlite:////Users/kinianlo/mlflow/mlruns.db"
+mlflow_experiment: "discoclip_svo_probes"
+
+# System configuration
+device: "cpu"  # choices: ["cpu", "cuda", "mps"]
+seed: 42 
