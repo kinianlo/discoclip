@@ -19,7 +19,7 @@ bond_dim: 10
 batch_size: 64
 learning_rate: 0.003
 weight_decay: 0.01
-epochs: 0
+epochs: 10
 patience: 5
 
 # Loss configuration
