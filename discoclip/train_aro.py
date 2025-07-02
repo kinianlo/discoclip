@@ -1,4 +1,3 @@
-import argparse
 import logging
 import os
 import yaml
@@ -6,7 +5,6 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from diskcache import Cache
 
 import mlflow
-import shtab
 import torch
 import torch.optim as optim
 from lambeq import AtomicType, Rewriter, Symbol
