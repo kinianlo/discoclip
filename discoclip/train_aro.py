@@ -180,6 +180,10 @@ def parse_args():
             for key, value in config.items():
                 if not hasattr(args, key) or getattr(args, key) is None:
                     setattr(args, key, value)
+
+    # If the mlflow uri is not set
+    if not args.mlflow_uri:
+        args.mlflow_uri = f"sqlite:///{os.path.expanduser('~/mlflow/mlruns.db')}"
     
     return args
 
