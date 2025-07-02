@@ -73,7 +73,7 @@ You can modify the training options in the `configs/aro_default.yaml` file. The 
 | Loss | `--hard-neg-swap` | Whether to use the distance swap for the hard negative loss | `false` |
 | Logging | `--log-path` | Path to save training logs | `logs` |
 | Logging | `--checkpoint-path` | Path to save model checkpoints | `checkpoints` |
-| Logging | `--mlflow-uri` | URI for MLflow tracking server | `sqlite:////Users/kinianlo/mlflow/mlruns.db` |
+<!-- | Logging | `--mlflow-uri` | URI for MLflow tracking server | `sqlite:////Users/kinianlo/mlflow/mlruns.db` | -->
 | Logging | `--mlflow-experiment` | Name of the MLflow experiment | `discoclip_aro` |
 | System | `--device` | Device to run the training on | `cpu` |
 | System | `--seed` | Random seed for reproducibility | `42` |
