@@ -55,7 +55,19 @@ python discoclip/train_aro.py --help
 ```
 
 ### Training options
-You can modify the training options in the `configs/aro_default.yaml` file. The following is a table of the available options:
+There are two ways to specify the training options:
+1. **Command Line Arguments**: You can pass the options directly in the command line when running the training script. For example:
+```bash
+python discoclip/train_aro.py --train-data-path data/processed/aro/combined/train.json --val-data-path data/processed/aro/combined/val.json --test-data-path data/processed/aro/combined/test.json
+```
+
+2. **Configuration File**: You can create a YAML configuration file (e.g., `configs/aro_default.yaml`) and specify the options there. The training script will automatically load the configuration file and apply the settings.
+
+> **Warning**  
+> The command line arguments will override the values in the configuration file if they are specified.
+
+<details>
+<summary>Click to expand training options</summary>
 
 | Group | Argument | Description | Default Value |
 |---|---|---|---|
@@ -81,3 +93,13 @@ You can modify the training options in the `configs/aro_default.yaml` file. The 
 | Logging | `--mlflow-experiment` | Name of the MLflow experiment | `discoclip_aro` |
 | System | `--device` | Device to run the training on | `cpu` |
 | System | `--seed` | Random seed for reproducibility | `42` |
+
+</details>
+
+### Logging and Checkpoints
+Logging is handled using [MLflow](https://mlflow.org/). By default, a local SQLite database is used to store the logs. You can change the database URI by setting the `mlflow_uri` in the configuration file or by passing it as a command line argument.
+You can monitor the training progress using the MLflow UI. To start the MLflow UI, run the following command:
+```bash
+mlflow ui --backend-store-uri sqlite:////path/to/your/mlruns.db
+```
+The default uri is `sqlite:///{path-to-your-home-directory}/mlflow/mlruns.db` unless specified otherwise in the configuration file or command line arguments.
