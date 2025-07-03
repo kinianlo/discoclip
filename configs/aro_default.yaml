@@ -32,7 +32,6 @@ hard_neg_swap: false
 # Logging configuration
 log_path: "logs"
 checkpoint_path: "checkpoints"
-mlflow_uri: "sqlite:///~/mlflow/mlruns.db"
 mlflow_experiment: "discoclip_aro"
 
 # System configuration

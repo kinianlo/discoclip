@@ -1,0 +1,7 @@
+pyyaml
+diskcache
+mlflow
+lambeq
+nltk
+cotengra
+optuna
