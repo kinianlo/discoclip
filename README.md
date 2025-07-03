@@ -41,12 +41,17 @@ pip install .
 ```bash
 python scripts/encode_aro_images.py
 ```
-By default, the CPU is used, but you can use a GPU by specifying `--device cuda`.
+<!-- By default, the CPU is used, but you can use a GPU by specifying `--device cuda`. -->
+By default, the CPU is used to host the clip model, but you can specify the device to use by adding `--device cuda` to the command if you have a GPU available. Use `--device mps` if you are on a Mac with Apple Silicon.
 
 # Training (ARO Benchmark)
 To train a model for the ARO dataset, you can use the following command:
 ```bash
 python discoclip/train_aro.py --config configs/aro_default.yaml
+```
+To see the available options, you can run:
+```bash
+python discoclip/train_aro.py --help
 ```
 
 ### Training options
