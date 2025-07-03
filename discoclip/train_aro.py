@@ -184,7 +184,8 @@ def parse_args():
     # If the mlflow uri is not set
     if not args.mlflow_uri:
         args.mlflow_uri = f"sqlite:///{os.path.expanduser('~/mlflow/mlruns.db')}"
-    
+   
+    print(f"Using MLflow URI: {args.mlflow_uri}") 
     return args
 
 
