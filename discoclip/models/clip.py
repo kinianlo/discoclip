@@ -5,14 +5,16 @@ class CustomTextCLIP(nn.Module):
     def __init__(self, text_layers=6, text_width=256, text_heads=4, embed_dim=512, vocab_size=49408):
         super().__init__()
         
-        # Only keep the custom text model
+        # Store hyperparameters
+        self.text_layers = text_layers
         self.text_width = text_width
+        self.text_heads = text_heads
         self.embed_dim = embed_dim
+        self.vocab_size = vocab_size
         
         self.token_embedding = nn.Embedding(vocab_size, text_width)
         self.positional_embedding = nn.Parameter(torch.empty(77, text_width))
         
-        # Standard Transformer Encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=text_width, nhead=text_heads, batch_first=True
         )
@@ -37,17 +39,44 @@ class CustomTextCLIP(nn.Module):
         return x
 
     def forward(self, image_features, text):
-        # image_features are pre-computed embeddings
-
         text_features = self.encode_text(text)
         
-        # Normalize
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
         text_features = text_features / text_features.norm(dim=1, keepdim=True)
         
-        # Cosine similarity
         logits = self.logit_scale.exp() * image_features @ text_features.t()
         return logits, logits.t()
+    
+    def save_to_checkpoint(self, path: str):
+        """
+        Save model weights and architecture hyperparameters to a checkpoint file.
+        """
+        checkpoint = {
+            'state_dict': self.state_dict(),
+            'text_layers': self.text_layers,
+            'text_width': self.text_width,
+            'text_heads': self.text_heads,
+            'embed_dim': self.embed_dim,
+            'vocab_size': self.vocab_size
+        }
+        torch.save(checkpoint, path)
+    
+    @classmethod
+    def load_from_checkpoint(cls, path: str, map_location=None):
+        """
+        Load a model from a checkpoint file.
+        Returns a CustomTextCLIP with the saved architecture and weights.
+        """
+        checkpoint = torch.load(path, map_location=map_location)
+        model = cls(
+            text_layers=checkpoint['text_layers'],
+            text_width=checkpoint['text_width'],
+            text_heads=checkpoint['text_heads'],
+            embed_dim=checkpoint['embed_dim'],
+            vocab_size=checkpoint['vocab_size']
+        )
+        model.load_state_dict(checkpoint['state_dict'])
+        return model
     
 class SimpleWordTokenizer:
     def __init__(self, sentences=None, context_length=77):
@@ -89,19 +118,17 @@ class SimpleWordTokenizer:
             clean_text = self._clean(text)
             words = clean_text.split()
             
-            # Map words to IDs, use pad (0) if word is unknown
             tokens = [self.vocab[self.sot]]
             
             tokens += [self.vocab.get(word, 0) for word in words]
             tokens.append(self.vocab[self.eot])
             
-            # Truncate and Fill
             tokens = tokens[:length]
             result[i, :len(tokens)] = torch.tensor(tokens)
             
         return result
 
-    def tokenize(self, texts, context_length=None) -> list[str]:
+    def tokenize(self, texts) -> list[str]:
         return self._clean(texts).split()
     
     @property
@@ -128,11 +155,10 @@ class SimpleWordTokenizer:
         Returns a SimpleWordTokenizer with the saved vocabulary.
         """
         checkpoint = torch.load(path)
-        tokenizer = cls.__new__(cls)
+        tokenizer = cls(sentences=None, context_length=checkpoint['context_length'])
         tokenizer.sot = checkpoint['sot']
         tokenizer.eot = checkpoint['eot']
         tokenizer.pad = checkpoint['pad']
         tokenizer.vocab = checkpoint['vocab']
-        tokenizer.context_length = checkpoint['context_length']
         tokenizer.decoder = {v: k for k, v in tokenizer.vocab.items()}
         return tokenizer
