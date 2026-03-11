@@ -691,6 +691,36 @@ def train_model(args, parent_run=None):
             f"Test Loss: {test_metrics['loss']:.4f}, "
             f"Test Acc: {test_metrics['hard_neg_acc']:.4f}"
         )
+
+        # Evaluate on subj/verb/obj subsets
+        from torch.utils.data import Subset
+        for subset_name, col in [("subj", "subj_neg"), ("verb", "verb_neg"), ("obj", "obj_neg")]:
+            indices = test_ds.dataset.index[test_ds.dataset[col] == True].tolist()
+            if len(indices) == 0:
+                continue
+            subset_loader = DataLoader(
+                Subset(test_ds, indices),
+                batch_size=args.batch_size,
+                shuffle=False,
+                collate_fn=collate_fn,
+            )
+            subset_metrics = evaluate_model(
+                best_model,
+                image_model,
+                subset_loader,
+                contrastive_loss,
+                hard_neg_loss,
+                hard_neg_loss_weight=args.hard_neg_loss_weight,
+                device=args.device,
+            )
+            mlflow.log_metrics(
+                {f"test_{subset_name}/{key}": value for key, value in subset_metrics.items()}
+            )
+            logger.info(
+                f"Test [{subset_name}] Loss: {subset_metrics['loss']:.4f}, "
+                f"Acc: {subset_metrics['hard_neg_acc']:.4f} (n={len(indices)})"
+            )
+
         logger.info("Training complete.")
         mlflow.log_artifact(os.path.join(args.log_path, f"train_{run.info.run_id}.log"))
 
